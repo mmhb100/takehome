@@ -1,0 +1,279 @@
+---
+title: '6674134'
+author: "takehome"
+date: "2024-08-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+install.packages("lme4")
+
+```
+
+
+```{r}
+library(lme4)
+library(plm)
+library(sjPlot)
+```
+
+
+
+
+```{r}
+data=read.csv("D:\\UCF\\Qual exam\\trafficpollution.csv")
+names(data)
+```
+
+```{r}
+data$location=rep(1:30,each=3)
+data$time=rep(1:3,30)
+#data[] <- lapply(data, function(x) ifelse(x == "."|x==-9, 99, x))
+data$People_min[data$People_min==-9]=NA
+data$People_min[is.na(data$People_min)] <- median(data$People_min, na.rm = TRUE)
+data$Upwind_num[data$Upwind_num=="."]=NA
+data$Upwind_num=as.numeric(data$Upwind_num)
+data$Upwind_num[is.na(data$Upwind_num)] <- median(data$Upwind_num, na.rm = TRUE)
+data$Road_width[data$Road_width=="."]=NA
+data$Road_width=as.numeric(data$Road_width)
+data$Road_width[is.na(data$Road_width)] <- median(data$Road_width, na.rm = TRUE)
+colnames(data)
+random_impute <- function(column) {
+  if (any(is.na(column))) {
+    missing_indices <- which(is.na(column))
+    column[missing_indices] <- sample(column[!is.na(column)], length(missing_indices), replace = TRUE)
+  }
+  return(column)
+}
+
+# Apply random imputation
+data$Wind_dir <- random_impute(data$Wind_dir)
+
+# View the imputed data
+print(df)
+
+data$wind_dir1=ifelse(data$Wind_dir==1,1,0)
+data$wind_dir2=ifelse(data$Wind_dir==2,1,0)
+data$wind_dir3=ifelse(data$Wind_dir==3,1,0)
+data$wind_dir4=ifelse(data$Wind_dir==4,1,0)
+
+data$Wind_strength1=ifelse(data$Wind_strength==1,1,0)
+data$Wind_strength2=ifelse(data$Wind_strength==2,1,0)
+data$Wind_strength3=ifelse(data$Wind_strength==3,1,0)
+
+data$traffic_flow1=ifelse(data$Traffic_flow==1,1,0)
+data$traffic_flow2=ifelse(data$Traffic_flow==2,1,0)
+
+data$hill_near1=ifelse(data$Hill_near==1,1,0)
+data$hill_near2=ifelse(data$Hill_near==2,1,0)
+data$Median[data$Median==0]=0
+data$Median[data$Median==1]=1
+#View(data)
+```
+
+
+# AVG CO
+# Mixed effect model
+
+```{r}
+mixedTL=lmer(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(Wind_dir)+factor(Wind_strength)+factor(Traffic_flow)+factor(Hill_near)+factor(Hill)+(1|Period)+(1|location),data=data)
+
+mixedTL1=lmer(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(Wind_dir)+factor(Wind_strength)+factor(Traffic_flow)+factor(Hill_near)+factor(Hill)+(1|Period),data=data)
+summary(mixedTL)
+tab_model(mixedTL)
+anova(mixedTL1,mixedTL, refit = TRUE)
+```
+
+```{r}
+colnames(data)
+# fixed effect model
+fe_model <- plm(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+summary(fe_model)
+
+#fe_model <- plm(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+as.factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(Wind_dir)+factor(Wind_strength)+factor(Traffic_flow)+factor(Hill_near)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+#summary(fe_model)
+
+re_model <- plm(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "random")
+summary(re_model)
+phtest(fe_model, re_model)
+```
+# AVG PM2.5
+
+
+```{r}
+pdata <- pdata.frame(data,index = c("location", "time"))
+X <- model.matrix(~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+Hill-1, data = pdata)
+y <- pdata$PM2.5_AVG
+str(X)
+```
+
+
+```{r}
+mixedTL=lmer(as.numeric(PM2.5_AVG)~scale(Gas_min)+scale(Diesel_min)+scale(Autos_min)+scale(People_min)+scale(Avg_story)+scale(Upwind_num)+scale(Road_width)+scale(Road_lanes)+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+(1|time)+(1|location),data=data)
+mixedTL1=lmer(PM2.5_AVG~scale(Gas_min)+scale(Diesel_min)+scale(Autos_min)+scale(People_min)+scale(Avg_story)+scale(Upwind_num)+scale(Road_width)+scale(Road_lanes)+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+(1|time),data=data)
+summary(mixedTL)
+tab_model(mixedTL)
+anova(mixedTL,mixedTL1, refit = TRUE)
+```
+
+
+```{r}
+# fixed effect model
+fe_model <- plm(log(PM2.5_AVG) ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+summary(fe_model)
+
+#fe_model <- plm(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+as.factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(Wind_dir)+factor(Wind_strength)+factor(Traffic_flow)+factor(Hill_near)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+#summary(fe_model)
+
+re_model <- plm(log(PM2.5_AVG) ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "random")
+summary(re_model)
+phtest(fe_model, re_model)
+
+```
+
+# AVG PM10
+
+
+
+```{r}
+pdata <- pdata.frame(data,index = c("location", "time"))
+X <- model.matrix(~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+Hill-1, data = pdata)
+y <- pdata$PM10_AVG
+str(X)
+```
+
+
+```{r}
+mixedTL=lmer(PM10_AVG~scale(Gas_min)+scale(Diesel_min)+scale(Autos_min)+scale(People_min)+scale(Avg_story)+scale(Upwind_num)+scale(Road_width)+scale(Road_lanes)+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+(1|time)+(1|location),data=data)
+summary(mixedTL)
+
+mixedTL1=lmer(PM10_AVG~scale(Gas_min)+scale(Diesel_min)+scale(Autos_min)+scale(People_min)+scale(Avg_story)+scale(Upwind_num)+scale(Road_width)+scale(Road_lanes)+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2+(1|time),data=data)
+anova(mixedTL,mixedTL1, refit=TRUE)
+```
+
+
+```{r}
+fe_model <- plm(log(PM10_AVG) ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+summary(fe_model)
+
+#fe_model <- plm(CO_AVG ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+as.factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(Wind_dir)+factor(Wind_strength)+factor(Traffic_flow)+factor(Hill_near)+factor(Hill), data = data,index=c("location", "Period"), model = "within")
+#summary(fe_model)
+
+re_model <- plm(log(PM10_AVG) ~Gas_min+Diesel_min+Autos_min+People_min+Avg_story+Upwind_num+Road_width+Road_lanes+factor(Median)+factor(Stop_traffic)+factor(Upwind_source)+factor(wind_dir1)+factor(wind_dir2)+factor(wind_dir3)+factor(wind_dir4)+factor(Wind_strength1)+factor(Wind_strength2)+factor(Wind_strength3)+factor(traffic_flow1)+factor(traffic_flow2)+factor(hill_near1)+factor(hill_near2)+factor(Hill), data = data,index=c("location", "Period"), model = "random")
+summary(re_model)
+phtest(fe_model, re_model)
+```
+
+
+
+```{r}
+# pooling model
+po_model <- plm(y ~as.numeric(Gas_min)+as.numeric(Diesel_min)+as.numeric(Autos_min)+as.numeric(People_min)+as.numeric(Avg_story)+as.numeric(Upwind_num)+as.numeric(Road_width)+Road_lanes+Median+Stop_traffic+Upwind_source+Hill+wind_dir1+wind_dir2+wind_dir3+wind_dir4+Wind_strength1+Wind_strength2+Wind_strength3+traffic_flow1+traffic_flow2+hill_near1+hill_near2, data = pdata, model = "pooling")
+summary(po_model)
+```
+
+```{r}
+
+phtest(fe_model, re_model)
+
+```
+# p-value<0.005, its significant, fixed effect model is appropiate. 
+
+# plot for average CO
+
+```{r}
+
+
+# Convert location to numeric for plotting
+data$location_numeric <- as.numeric(data$location)
+data$time[data$time==1]='1'
+data$time[data$time==2]='2'
+data$time[data$time==3]='3'
+# Plot setup: Initial plot for one group
+plot(data$location_numeric[data$time == "1"], 
+     data$CO_AVG[data$time == "1"], 
+     type = "b", pch = 16, col = "blue", 
+     xlab = "Location", ylab = "Average CO Level",
+     main = "Average CO Levels by Location and Time")
+
+# Add lines for the second group
+lines(data$location_numeric[data$time == "2"], 
+      data$CO_AVG[data$time == "2"], 
+      type = "b", pch = 17, col = "red")
+lines(data$location_numeric[data$time == "3"], 
+      data$CO_AVG[data$time == "3"], 
+      type = "b", pch = 17, col = "green")
+
+# Add a legend
+legend("topright", legend = c("Early Morning", "Morning Rush hour", "Evening Rush hour"),
+       col = c("blue", "red","green"), pch = c(16, 17,18), lty = 1)
+```
+
+# Plot for average PM2.5
+```{r}
+data$location_numeric <- as.numeric(data$location)
+data$time[data$time==1]='1'
+data$time[data$time==2]='2'
+data$time[data$time==3]='3'
+# Plot setup: Initial plot for one group
+plot(data$location_numeric[data$time == "1"], 
+     data$PM2.5_AVG[data$time == "1"], 
+     type = "b", pch = 16, col = "blue", 
+     xlab = "Location", ylab = "Average PM2.5 Level",
+     main = " PM2.5 Levels by Location and Time")
+
+# Add lines for the second group
+lines(data$location_numeric[data$time == "2"], 
+      data$PM2.5_AVG[data$time == "2"], 
+      type = "b", pch = 17, col = "red")
+lines(data$location_numeric[data$time == "3"], 
+      data$PM2.5_AVG[data$time == "3"], 
+      type = "b", pch = 17, col = "green")
+
+# Add a legend
+legend("topright", legend = c("Early Morning", "Morning Rush hour", "Evening Rush hour"),
+       col = c("blue", "red","green"), pch = c(16, 17,18), lty = 1)
+```
+
+# Plot for average PM10
+```{r}
+data$location_numeric <- as.numeric(data$location)
+data$time[data$time==1]='1'
+data$time[data$time==2]='2'
+data$time[data$time==3]='3'
+# Plot setup: Initial plot for one group
+plot(data$location_numeric[data$time == "1"], 
+     data$PM10_AVG[data$time == "1"], 
+     type = "b", pch = 16, col = "blue", 
+     xlab = "Location", ylab = "Average PM10 Level",
+     main = " Average PM10 Levels by Location and Time")
+
+# Add lines for the second group
+lines(data$location_numeric[data$time == "2"], 
+      data$PM10_AVG[data$time == "2"], 
+      type = "b", pch = 17, col = "red")
+lines(data$location_numeric[data$time == "3"], 
+      data$PM10_AVG[data$time == "3"], 
+      type = "b", pch = 17, col = "green")
+
+# Add a legend
+legend("topright", legend = c("Early Morning", "Morning Rush hour", "Evening Rush hour"),
+       col = c("blue", "red","green"), pch = c(16, 17,18), lty = 1)
+```
+
+
+```{r}
+install.packages("summarytools")
+colnames(data)
+library(summarytools)
+tapply(data[,c("Gas_min","Diesel_min","Autos_min","People_min","Avg_story","Road_width","Road_lanes","Upwind_num")], data$Period,summary)
+tapply(df$dt, df$group, summary)
+```
+
+
+
